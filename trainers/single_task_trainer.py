@@ -32,8 +32,9 @@ def train_single_task(
         raise ValueError(f"task_id must be in [0..9], got {task_id}")
     loader = loaders[task_id]
 
-    model = MultiHeadVCLVAE().to(device)
+    model = MultiHeadVCLVAE()
     model.ensure_task(task_id)
+    model = model.to(device)
 
     task_key = str(task_id)
     params = list(model.encoders[task_key].parameters())

@@ -72,10 +72,20 @@ class MultiHeadVCLVAE(nn.Module):
 
     def ensure_task(self, task_id):
         key = str(task_id)
+
+        # Keep newly created task modules on the same device/dtype as the shared module.
+        ref_param = next(self.shared.parameters())
+        target_device = ref_param.device
+        target_dtype = ref_param.dtype
+
         if key not in self.encoders:
-            self.encoders[key] = TaskEncoder(z_dim=self.z_dim, x_dim=self.x_dim, hidden_dim=500)
+            self.encoders[key] = TaskEncoder(
+                z_dim=self.z_dim, x_dim=self.x_dim, hidden_dim=500
+            ).to(device=target_device, dtype=target_dtype)
         if key not in self.heads:
-            self.heads[key] = HeadZtoH(z_dim=self.z_dim, h_dim=self.h_dim)
+            self.heads[key] = HeadZtoH(z_dim=self.z_dim, h_dim=self.h_dim).to(
+                device=target_device, dtype=target_dtype
+            )
 
     @staticmethod
     def reparameterize(mu, logvar):
