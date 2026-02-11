@@ -49,10 +49,11 @@ class SharedHtoX(nn.Module):
     def __init__(self, h_dim: int = 500, x_dim: int = 784):
         super().__init__()
         self.x_dim = x_dim
-        self.net = make_var_mlp([h_dim, 500, x_dim], activation="relu", bias=True)
+        # Match TF1 decoder: hidden ReLU + final sigmoid output probability.
+        self.net = make_var_mlp([h_dim, 500, x_dim], activation="sigmoid", bias=True)
 
     def forward(self, h, sample: bool = True):
-        # Return reconstruction logits (no sigmoid here).
+        # Return reconstruction probabilities in [0, 1].
         return self.net(h, sample=sample)
 
     def kl(self):
@@ -101,13 +102,13 @@ class MultiHeadVCLVAE(nn.Module):
         z = self.reparameterize(mu, logvar)
 
         h = self.heads[key](z, sample=sample_theta)
-        recon_logits = self.shared(h, sample=sample_theta)
+        recon_probs = self.shared(h, sample=sample_theta)
 
         # Per-sample KL(q(z|x) || p(z)) against standard normal prior.
         kl_z = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp()).sum(dim=1)
 
         return {
-            "recon_logits": recon_logits,
+            "recon_probs": recon_probs,
             "mu": mu,
             "logvar": logvar,
             "z": z,
@@ -116,19 +117,19 @@ class MultiHeadVCLVAE(nn.Module):
 
     def decode(self, task_id, z, sample_theta: bool = False, reshape: bool = True):
         """
-        Decode latent z to reconstruction logits.
-        - reshape=False: returns logits with shape [B, 784]
-        - reshape=True: returns logits reshaped to [B, 1, 28, 28]
+        Decode latent z to reconstruction probabilities.
+        - reshape=False: returns probs with shape [B, 784]
+        - reshape=True: returns probs reshaped to [B, 1, 28, 28]
         """
         self.ensure_task(task_id)
         key = str(task_id)
 
         h = self.heads[key](z, sample=sample_theta)
-        logits = self.shared(h, sample=sample_theta)
+        probs = self.shared(h, sample=sample_theta)
 
         if reshape:
-            return logits.view(logits.size(0), 1, 28, 28)
-        return logits
+            return probs.view(probs.size(0), 1, 28, 28)
+        return probs
 
 
 if __name__ == "__main__":
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     x = torch.rand(8, 1, 28, 28)
     out = model.forward(task_id, x, sample_theta=False)
     print("forward:")
-    print(f"  recon_logits shape: {tuple(out['recon_logits'].shape)}")
+    print(f"  recon_probs shape: {tuple(out['recon_probs'].shape)}")
     print(f"  mu shape: {tuple(out['mu'].shape)}")
     print(f"  logvar shape: {tuple(out['logvar'].shape)}")
     print(f"  kl_z shape: {tuple(out['kl_z'].shape)}")

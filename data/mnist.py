@@ -82,6 +82,10 @@ def make_digit_task_loaders(
             digit=digit,
             binarize=binarize,
         )
+        if __debug__ and train:
+            labels = mnist_dataset.targets[digit_dataset.indices]
+            if not torch.all(labels == digit):
+                raise RuntimeError(f"Digit dataset construction failed for digit={digit}")
         loaders[digit] = DataLoader(
             digit_dataset,
             batch_size=batch_size,

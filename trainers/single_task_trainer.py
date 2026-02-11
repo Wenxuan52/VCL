@@ -7,7 +7,7 @@ from torchvision.utils import make_grid, save_image
 
 from data.mnist import make_digit_task_loaders
 from models.vcl_vae import MultiHeadVCLVAE
-from trainers.vae_losses import latent_kl, recon_loss_bce_with_logits
+from trainers.vae_losses import latent_kl, recon_loss_bernoulli_probs
 from utils.checkpoint import save_checkpoint
 
 
@@ -56,7 +56,7 @@ def train_single_task(
             x = x.to(device)
 
             out = model.forward(task_id, x, sample_theta=sample_theta)
-            recon = recon_loss_bce_with_logits(out["recon_logits"], x)
+            recon = recon_loss_bernoulli_probs(out["recon_probs"], x)
             klz = latent_kl(out["mu"], out["logvar"])
 
             loss = (recon + klz).mean()
@@ -86,8 +86,7 @@ def train_single_task(
     model.eval()
     with torch.no_grad():
         z = torch.randn(64, model.z_dim, device=device)
-        imgs_logits = model.decode(task_id, z, sample_theta=False, reshape=True)
-        imgs = torch.sigmoid(imgs_logits)
+        imgs = model.decode(task_id, z, sample_theta=False, reshape=True)
         grid = make_grid(imgs, nrow=8)
 
     sample_path = os.path.join(out_dir, f"samples_task{task_id}.png")

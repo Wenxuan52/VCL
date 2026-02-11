@@ -2,14 +2,15 @@ import torch
 import torch.nn.functional as F
 
 
-def recon_loss_bce_with_logits(recon_logits, x):
-    """Per-sample BCE reconstruction loss (sum over 784 dims)."""
+def recon_loss_bernoulli_probs(recon_probs, x):
+    """Per-sample Bernoulli NLL (sum over 784 dims) from probabilities."""
     if x.dim() == 4:
         x = x.view(x.size(0), -1)
     elif x.dim() != 2:
         raise ValueError(f"x must be [B,1,28,28] or [B,784], got {tuple(x.shape)}")
 
-    bce = F.binary_cross_entropy_with_logits(recon_logits, x, reduction="none")
+    probs = torch.clamp(recon_probs, min=1e-6, max=1.0 - 1e-6)
+    bce = F.binary_cross_entropy(probs, x, reduction="none")
     return bce.sum(dim=1)
 
 
