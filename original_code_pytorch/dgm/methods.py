@@ -16,17 +16,24 @@ def kl_gaussian(mu_p: torch.Tensor, log_sig_p: torch.Tensor, mu_q: float | torch
     return kl.flatten(1).sum(dim=1)
 
 
+# def reconstruction_log_prob(x: torch.Tensor, x_hat: torch.Tensor, ll: str) -> torch.Tensor:
+#     if ll == "bernoulli":
+#         p = torch.clamp(x_hat, 1e-9, 1.0 - 1e-9)
+#         logp = x * torch.log(p) + (1 - x) * torch.log(1 - p)
+#     elif ll == "l2":
+#         logp = -((x - x_hat) ** 2)
+#     elif ll == "l1":
+#         logp = -(x - x_hat).abs()
+#     else:
+#         raise ValueError(ll)
+#     return logp.flatten(1).sum(dim=1)
+
 def reconstruction_log_prob(x: torch.Tensor, x_hat: torch.Tensor, ll: str) -> torch.Tensor:
     if ll == "bernoulli":
-        p = torch.clamp(x_hat, 1e-9, 1.0 - 1e-9)
-        logp = x * torch.log(p) + (1 - x) * torch.log(1 - p)
-    elif ll == "l2":
-        logp = -((x - x_hat) ** 2)
-    elif ll == "l1":
-        logp = -(x - x_hat).abs()
-    else:
-        raise ValueError(ll)
-    return logp.flatten(1).sum(dim=1)
+        eps = 1e-6
+        x_hat = x_hat.clamp(eps, 1.0 - eps)
+        return (x * torch.log(x_hat) + (1.0 - x) * torch.log(1.0 - x_hat)).sum(dim=1)
+    raise ValueError(ll)
 
 
 def elbo(x: torch.Tensor, x_hat: torch.Tensor, mu: torch.Tensor, log_sig: torch.Tensor, ll: str) -> torch.Tensor:

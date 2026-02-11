@@ -54,8 +54,8 @@ def run(args: argparse.Namespace) -> None:
         eval_sets.append(x_valid)
 
         model = TaskModel(
-            encoder=Encoder(cfg.dim_x, args.dim_h, args.dim_z, n_layers=3).to(device),
-            decoder_head=DecoderHead(args.dim_z, args.dim_h, n_layers=2).to(device),
+            encoder=Encoder(cfg.dim_x, args.dim_h, args.dim_z, n_layers=1).to(device),
+            decoder_head=DecoderHead(args.dim_z, args.dim_h, n_layers=1).to(device),
             decoder_shared=decoder_shared,
         ).to(device)
         task_models.append(model)
@@ -124,8 +124,9 @@ def run(args: argparse.Namespace) -> None:
         task_scores = []
         for i, m in enumerate(task_models):
             xv = to_tensor(eval_sets[i], device)
-            mean, var = importance_sample_ll(m, xv[: min(len(xv), 500)], cfg.ll, k=args.eval_k)
-            ste = np.sqrt(var / max(1, len(xv)))
+            n = min(len(xv), 500)
+            mean, var = importance_sample_ll(m, xv[:n], cfg.ll, k=args.eval_k)
+            ste = np.sqrt(var / max(1, n))
             print(f"eval task {i+1}: test_ll={mean:.2f}, ste={ste:.4f}")
             task_scores.append((mean, ste))
         result_list.append(task_scores)
@@ -161,14 +162,14 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("data_name", choices=["mnist", "notmnist"])
     p.add_argument("method", choices=["noreg", "ewc", "laplace", "si", "onlinevi"])
-    p.add_argument("lbd", type=float, nargs="?", default=1.0)
+    p.add_argument("lbd", type=float, nargs="?", default=10.0)
     p.add_argument("--data-path", default="./data")
     p.add_argument("--dim-z", type=int, default=50)
     p.add_argument("--dim-h", type=int, default=500)
-    p.add_argument("--batch-size", type=int, default=50)
+    p.add_argument("--batch-size", type=int, default=256)
     p.add_argument("--lr", type=float, default=1e-4)
-    p.add_argument("--eval-k", type=int, default=100)
-    p.add_argument("--n-iter-override", type=int, default=0)
+    p.add_argument("--eval-k", type=int, default=500)
+    p.add_argument("--n-iter-override", type=int, default=200)
     p.add_argument("--cpu", action="store_true")
     return p.parse_args()
 
