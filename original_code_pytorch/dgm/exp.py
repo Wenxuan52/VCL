@@ -114,7 +114,8 @@ def run(args: argparse.Namespace) -> None:
             one_per_task = []
             for m in task_models:
                 s = m.sample(100, args.dim_z, device).cpu().numpy()
-                one_per_task.append(s[np.random.randint(0, len(s)) : np.random.randint(0, len(s)) + 1])
+                idx = np.random.randint(0, len(s))
+                one_per_task.append(s[idx : idx + 1])
             canvas = np.zeros((10, cfg.dim_x), dtype=np.float32)
             concat = np.concatenate(one_per_task, axis=0)
             canvas[: len(concat)] = concat
