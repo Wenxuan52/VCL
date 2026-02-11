@@ -148,6 +148,8 @@ def train_task(
     # Appendix E-style init: keep mu, reset log_sigma for trainable variational blocks.
     reset_log_sigma(model.shared, log_sigma_init)
     reset_log_sigma(model.heads[task_key], log_sigma_init)
+    
+    head_snapshot_init = snapshot_posteriors(model.heads[task_key])
 
     params = list(model.encoders[task_key].parameters())
     params += list(model.heads[task_key].parameters())
@@ -173,7 +175,7 @@ def train_task(
             klz = latent_kl(out["mu"], out["logvar"])
 
             shared_kl = kl_module_to_snapshot(model.shared, shared_snapshot)
-            head_kl = kl_module_to_standard_normal(model.heads[task_key])
+            head_kl = kl_module_to_snapshot(model.heads[task_key], head_snapshot_init)
             param_kl = shared_kl + head_kl
 
             loss = (recon + klz).mean() + (param_kl / max(1, n_t))
@@ -196,6 +198,10 @@ def train_task(
             f"klz={epoch_klz / max(1, n_samples):.4f} "
             f"param_kl={epoch_param_kl / max(1, n_samples):.4f}"
         )
+
+        if epoch == 1:
+            print("shared_kl:", shared_kl.item(), "head_kl:", head_kl.item(), "param_kl:", param_kl.item())
+            print("scaled param_kl:", (param_kl / n_t).item())
 
     ckpt_path = os.path.join(out_dir, f"ckpt_task{task_id}.pt")
     save_checkpoint(
