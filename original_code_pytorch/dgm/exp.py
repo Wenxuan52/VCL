@@ -24,6 +24,9 @@ def get_data(data_name: str, data_path: str, digits: list[int]):
     raise ValueError(data_name)
 
 
+VCL_INIT_STD = 1e-6
+
+
 def run(args: argparse.Namespace) -> None:
     cfg = get_config(args.data_name)
     device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
@@ -35,14 +38,21 @@ def run(args: argparse.Namespace) -> None:
     fig_root.mkdir(parents=True, exist_ok=True)
     res_root.mkdir(parents=True, exist_ok=True)
 
-    decoder_shared = DecoderShared(cfg.dim_x, args.dim_h, n_layers=2, last_activation="sigmoid").to(device)
+    init_logstd = float(np.log(VCL_INIT_STD))
+    bayesian_decoder = args.method == "onlinevi"
+    decoder_shared = DecoderShared(
+        cfg.dim_x,
+        args.dim_h,
+        n_layers=2,
+        last_activation="sigmoid",
+        bayesian=bayesian_decoder,
+        init_logstd=init_logstd,
+    ).to(device)
     task_models: list[TaskModel] = []
     eval_sets: list[np.ndarray] = []
     result_list: list[list[tuple[float, float]]] = []
 
     reg = ContinualRegularizer(kind=args.method, lbd=args.lbd)
-    if args.method == "onlinevi":
-        reg.prior_mean = [p.detach().clone() for p in decoder_shared.parameters()]
 
     x_gen_all = []
 
@@ -55,10 +65,14 @@ def run(args: argparse.Namespace) -> None:
 
         model = TaskModel(
             encoder=Encoder(cfg.dim_x, args.dim_h, args.dim_z, n_layers=1).to(device),
-            decoder_head=DecoderHead(args.dim_z, args.dim_h, n_layers=1).to(device),
+            decoder_head=DecoderHead(args.dim_z, args.dim_h, n_layers=1, bayesian=bayesian_decoder, init_logstd=init_logstd).to(device),
             decoder_shared=decoder_shared,
         ).to(device)
         task_models.append(model)
+
+        if args.method == "onlinevi":
+            model.decoder_shared.reset_posterior_from_prior(init_logstd)
+            model.decoder_head.reset_posterior_from_prior(init_logstd)
 
         params = list(model.encoder.parameters()) + list(model.decoder_head.parameters()) + list(model.decoder_shared.parameters())
         opt = optim.Adam(params, lr=args.lr)
@@ -80,9 +94,9 @@ def run(args: argparse.Namespace) -> None:
                 if len(b) == 0:
                     continue
                 xb = to_tensor(x_train[b], device)
-                x_hat, mu, log_sig = model(xb, sample=True)
+                x_hat, mu, log_sig = model(xb, sample=True, sample_w=args.method == "onlinevi")
                 bound = elbo(xb, x_hat, mu, log_sig, cfg.ll).mean()
-                pen = reg.penalty(shared_params) / max(1, len(x_train))
+                pen = reg.penalty(shared_params, decoder_shared=model.decoder_shared, decoder_head=model.decoder_head) / max(1, len(x_train))
                 loss = -bound + pen
 
                 opt.zero_grad()
@@ -109,11 +123,11 @@ def run(args: argparse.Namespace) -> None:
         torch.save(ckpt, save_root / f"checkpoint_{task-1}.pt")
 
         with torch.no_grad():
-            samples = model.sample(100, args.dim_z, device).cpu().numpy()
+            samples = model.sample(100, args.dim_z, device, sample_w=False).cpu().numpy()
             plot_images(samples, cfg.image_shape, str(fig_root), f"{args.data_name}_gen_task{task}_{task}")
             one_per_task = []
             for m in task_models:
-                s = m.sample(100, args.dim_z, device).cpu().numpy()
+                s = m.sample(100, args.dim_z, device, sample_w=False).cpu().numpy()
                 idx = np.random.randint(0, len(s))
                 one_per_task.append(s[idx : idx + 1])
             canvas = np.zeros((10, cfg.dim_x), dtype=np.float32)
@@ -134,7 +148,7 @@ def run(args: argparse.Namespace) -> None:
         fisher = None
         if args.method in {"ewc", "laplace"}:
             xb = to_tensor(x_train[np.random.permutation(len(x_train))[: args.batch_size]], device)
-            x_hat, mu, log_sig = model(xb, sample=True)
+            x_hat, mu, log_sig = model(xb, sample=True, sample_w=args.method == "onlinevi")
             b = elbo(xb, x_hat, mu, log_sig, cfg.ll).mean()
             fisher = make_fisher_diag(-b, shared_params)
         if args.method == "si":
@@ -148,6 +162,8 @@ def run(args: argparse.Namespace) -> None:
             reg.omega = si_omega
 
         reg.update_after_task(shared_params, fisher_estimate=fisher, si_new_omega=(reg.omega if args.method == "si" else None))
+        if args.method == "onlinevi":
+            model.decoder_shared.update_prior_from_posterior()
 
     all_vis = np.concatenate(x_gen_all, axis=0)
     plot_images(all_vis, cfg.image_shape, str(fig_root), f"{args.data_name}_gen_all")
@@ -169,7 +185,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=256)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--eval-k", type=int, default=500)
-    p.add_argument("--n-iter-override", type=int, default=200)
+    p.add_argument("--n-iter-override", type=int, default=-1)
     p.add_argument("--cpu", action="store_true")
     return p.parse_args()
 

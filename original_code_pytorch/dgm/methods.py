@@ -61,10 +61,26 @@ class ContinualRegularizer:
     prior_mean: list[torch.Tensor] | None = None
     prior_log_sigma: float = -2.3
 
-    def penalty(self, shared_params: list[torch.nn.Parameter]) -> torch.Tensor:
+    def penalty(
+        self,
+        shared_params: list[torch.nn.Parameter],
+        decoder_shared: torch.nn.Module | None = None,
+        decoder_head: torch.nn.Module | None = None,
+    ) -> torch.Tensor:
         device = shared_params[0].device
         z = torch.tensor(0.0, device=device)
-        if self.kind in {"noreg", ""} or self.old_params is None:
+        if self.kind in {"noreg", ""}:
+            return z
+
+        if self.kind == "onlinevi":
+            if decoder_shared is None:
+                return z
+            kl = decoder_shared.kl()
+            if decoder_head is not None:
+                kl = kl + decoder_head.kl()
+            return kl
+
+        if self.old_params is None:
             return z
 
         if self.kind == "ewc":
@@ -76,10 +92,6 @@ class ContinualRegularizer:
         if self.kind == "si":
             assert self.omega is not None
             return 0.5 * self.lbd * sum((om * (p - p0) ** 2).sum() for p, p0, om in zip(shared_params, self.old_params, self.omega))
-        if self.kind == "onlinevi":
-            assert self.prior_mean is not None
-            sig2 = torch.exp(torch.tensor(2 * self.prior_log_sigma, device=device))
-            return 0.5 * sum(((p - pm) ** 2 / sig2).sum() for p, pm in zip(shared_params, self.prior_mean))
         raise ValueError(self.kind)
 
     def update_after_task(
@@ -100,4 +112,4 @@ class ContinualRegularizer:
         elif self.kind == "si":
             self.omega = si_new_omega
         elif self.kind == "onlinevi":
-            self.prior_mean = [p.detach().clone() for p in shared_params]
+            return
