@@ -86,7 +86,7 @@ def main() -> None:
     test_sets = []
     for task_id, digits in enumerate(cfg.labels):
         try:
-            _, x_test = load_mnist(digits=digits, data_root="data")
+            _, x_test = load_mnist(digits=digits, data_root="../../data")
         except RuntimeError as exc:
             if str(exc) == MNIST_NOT_FOUND_MSG:
                 raise RuntimeError(MNIST_NOT_FOUND_MSG) from exc

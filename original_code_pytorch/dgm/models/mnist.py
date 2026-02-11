@@ -20,7 +20,7 @@ def _load_split(data_root: str, train: bool) -> Tuple[torch.Tensor, torch.Tensor
     return x, y
 
 
-def load_mnist(digits: List[int], data_root: str = "data") -> Tuple[torch.Tensor, torch.Tensor]:
+def load_mnist(digits: List[int], data_root: str = "../../data") -> Tuple[torch.Tensor, torch.Tensor]:
     if len(digits) == 0:
         raise ValueError("digits must be a non-empty list")
 

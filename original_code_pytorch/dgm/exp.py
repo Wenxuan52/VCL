@@ -110,7 +110,7 @@ def main() -> None:
         print("=" * 90)
         print(f"Task {task_id} / digit {digits}")
         try:
-            x_train_full, x_test = load_mnist(digits=digits, data_root="data")
+            x_train_full, x_test = load_mnist(digits=digits, data_root="../../data")
         except RuntimeError as exc:
             if str(exc) == MNIST_NOT_FOUND_MSG:
                 raise RuntimeError(MNIST_NOT_FOUND_MSG) from exc

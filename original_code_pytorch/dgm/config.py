@@ -28,7 +28,7 @@ def get_config(data_name: str) -> DGMConfig:
             dimX=28 * 28,
             dimZ=50,
             dimH=500,
-            batch_size=50,
+            batch_size=256,
             lr=1e-4,
             n_iter=200,
             K_mc=10,

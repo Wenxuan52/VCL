@@ -87,7 +87,12 @@ class BayesianDecoder(nn.Module):
     def get_head(self, task_id: int) -> GeneratorHeadBayesian:
         key = str(task_id)
         if key not in self.heads:
-            self.heads[key] = GeneratorHeadBayesian(dimZ=self.dimZ, dimH=self.dimH)
+            head = GeneratorHeadBayesian(dimZ=self.dimZ, dimH=self.dimH)
+            # Important: heads can be created *after* decoder.to(device).
+            # Ensure newly created head follows decoder parameter device/dtype.
+            ref_param = next(self.shared.parameters())
+            head = head.to(device=ref_param.device, dtype=ref_param.dtype)
+            self.heads[key] = head
         return self.heads[key]
 
     def forward(self, z: torch.Tensor, task_id: int, sample_W: bool = True) -> torch.Tensor:
