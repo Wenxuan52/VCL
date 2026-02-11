@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 
 import torch
 from torch import nn
@@ -94,6 +95,21 @@ class BayesianDecoder(nn.Module):
             head = head.to(device=ref_param.device, dtype=ref_param.dtype)
             self.heads[key] = head
         return self.heads[key]
+
+    def _materialize_heads_from_state_dict(self, state_dict: dict[str, torch.Tensor]) -> None:
+        """Create any task heads present in a checkpoint state dict before loading."""
+        task_ids: set[int] = set()
+        for key in state_dict.keys():
+            match = re.match(r"^heads\.(\d+)\.", key)
+            if match is not None:
+                task_ids.add(int(match.group(1)))
+
+        for task_id in sorted(task_ids):
+            self.get_head(task_id)
+
+    def load_state_dict(self, state_dict, strict: bool = True):
+        self._materialize_heads_from_state_dict(state_dict)
+        return super().load_state_dict(state_dict, strict=strict)
 
     def forward(self, z: torch.Tensor, task_id: int, sample_W: bool = True) -> torch.Tensor:
         head = self.get_head(task_id)
